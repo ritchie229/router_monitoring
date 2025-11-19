@@ -636,8 +636,7 @@ Within this repo you can find all scripts, configs and ready monitoring tools re
 
 The project structure:
 
- grafana-deploy]# tree
-.
+grafana-deploy
 ├── alert.rules.yml
 ├── docker-compose.yml
 ├── grafana
