@@ -687,16 +687,16 @@ To do so and stop all deleting the secrets just run the scripts below:
 
 
 ## 14. Wi-Fi Interface Key Metrics (wifi_network_*)
-
+```bash
 | Metric | What it shows | How to use |
 |--------|---------------|------------|
 | `wifi_network_quality` | Signal quality (0–100%) | Graph AP signal quality. Can set threshold <50% — weak signal. |
 | `wifi_network_signal_dbm` | RSSI signal in dBm | Strong signal around -50…-60 dBm. -80 and below — weak signal. |
 | `wifi_network_noise_dbm` | Noise level in dBm | Lower noise is better (< -90 dBm). High noise degrades quality. |
 | `wifi_network_bitrate` | Current transmission speed (kbit/s) | Check AP throughput, drops under overload. |
-
+```
 ## Client Metrics (wifi_station_*)
-
+```bash
 | Metric | What it shows | How to use |
 |--------|---------------|------------|
 | `wifi_station_signal_dbm` | Client RSSI in dBm | Check signal quality for each client. |
@@ -706,3 +706,4 @@ To do so and stop all deleting the secrets just run the scripts below:
 | `wifi_station_receive_kilobits_per_second` | Client→AP transmission speed | Same but in reverse direction. |
 | `wifi_station_transmit/receive_packets_total` | Packet count | For load analysis and packet loss issues. |
 | `wifi_stations` | Total number of connected clients | Can set alert if AP "loses" clients. |
+```
