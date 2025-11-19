@@ -1,9 +1,10 @@
-
+```bash
   _______                     ________        __
  |       |.-----.-----.-----.|  |  |  |.----.|  |_
  |   -   ||  _  |  -__|     ||  |  |  ||   _||   _|
  |_______||   __|_____|__|__||________||__|  |____|
           |__| W I R E L E S S   F R E E D O M
+```
 ___________________________________________________
 
 # **Converting TP-Link WR1043ND v1 into a Linux Host on OpenWrt with Advanced Wi-Fi Monitoring**
