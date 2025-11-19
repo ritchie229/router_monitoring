@@ -571,7 +571,7 @@ ssh root@192.168.1.1 (this is the default address after reset)
 cd /tmp
 mtd -r write fw.bin firmware
 ```
-If router is bricked – disassemle the router, find four pin connector (RX, TX, GND, VCC) on the main board, connect thru UART-USB adaptor (bitrate 115200) using Putty, turn on the router and strat typing tpl tpl tpl until CLI appears. Set the NIC as 192.168.0.5/24 gw 192.168.0.1 on PC, run TFTPd and start broadcasting the binaries. Server IP 192.168.0.5. The commands to run on the terminal:
+If router is bricked – disassemle the router, find four pin connector (RX, TX, GND, VCC(do not connect)) on the main board, connect thru UART-USB adaptor (bitrate 115200) using Putty, turn on the router and strat typing tpl tpl tpl until CLI appears. Set the NIC as 192.168.0.5/24 gw 192.168.0.1 on PC, run TFTPd and start broadcasting the binaries. Server IP 192.168.0.5. The commands to run on the terminal:
 ```bash
 erase 0xbf020000 +7c0000
 tftpboot 0x81000000 .bin
