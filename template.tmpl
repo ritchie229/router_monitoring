@@ -1,0 +1,20 @@
+{{ define "telegram.default.message" }}
+🚨 <b>{{ .Status | toUpper }}</b>
+
+<b>Alert:</b> {{ .Labels.alertname }}
+<b>Instance:</b> {{ .Labels.instance }}
+<b>Severity:</b> {{ .Labels.severity }}
+
+<b>Description:</b>
+{{ .Annotations.description }}
+
+<b>Summary:</b>
+{{ .Annotations.summary }}
+
+{{ if eq .Status "firing" }}
+🔥 <b>Started at:</b> {{ .StartsAt }}
+{{ else }}
+🟢 <b>Resolved at:</b> {{ .EndsAt }}
+{{ end }}
+{{ end }}
+

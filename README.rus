@@ -1,0 +1,627 @@
+
+  _______                     ________        __
+ |       |.-----.-----.-----.|  |  |  |.----.|  |_
+ |   -   ||  _  |  -__|     ||  |  |  ||   _||   _|
+ |_______||   __|_____|__|__||________||__|  |____|
+          |__| W I R E L E S S   F R E E D O M
+
+
+«Преобразование TP-Link WR1043ND v1 
+в Linux-хост на OpenWrt с расширенным 
+Wi-Fi-мониторингом»
+https://youtu.be/ToZc7O0AeFA
+
+1. Введение
+Цель работы – превратить старый роутер TP-Link TL-WR1043ND v1 в полноценную Linux-подобную платформу на базе OpenWrt, а затем развернуть систему мониторинга Wi-Fi-клиентов, состоящую из:
+•	prometheus-node-exporter-lua
+•	два кастомных экспортера:
+o	wifi.lua — состояние радиоинтерфейса (качество, уровень, шум, bitrate)
+o	wifi_stations.lua — статистика клиентов (RSSI, inactive, tx/rx, throughput)
+•	Prometheus — сбор метрик
+•	Grafana — визуализация, включая количество активных клиентов
+•	Alertmanager — алерты «низкий сигнал» и «клиент пропал»
+
+2. Прошивка роутера OpenWrt
+Использован стабильный официальный релиз OpenWrt:
+https://downloads.openwrt.org/releases/22.03.5/targets/ath79/generic/
+Файл прошивки:
+openwrt-22.03.5-ath79-generic-tplink_tl-wr1043nd-v1-squashfs-factory.bin
+
+Этапы прошивки:
+2.1. Превращение/скачивание родной прошивки без boot. 
+Если захотим вернуться к заводской прошивке с OpenWrt, то её просто так использовать не получится, надо скачивать либо …stripped.bin, либо самому подкоротить (убрать boot) с имеющегося файла прошивки. Например:
+https://4pda.to/forum/dl/post/8068068/TL-WR1043ND-V1-stripped.zip 
+Либо выполнить dd if=wr1043nv1.bin of=fw.bin  skip=257 bs=512 над оригинальным файлом прошивки wr1043nv1.bin
+
+2.2. Сохранение бекапа настроек.
+Подключаемся к штатной веб-панели TP-Link http://192.168.1.1, далее System Tools -> Backup & Restore -> Backup
+
+2.3. Выбор файла ...factory.bin.
+Стабильная версия это тот файл, в имени которого есть слова factory и squashfs. 
+Готовый образ, который заработает сразу после прошивки: https://mirror-03.infra.openwrt.org/releases/22.03.5/targets/ath79/generic/openwrt-22.03.5-ath79-generic-tplink_tl-wr1043nd-v1-squashfs-factory.bin
+Стабильный образ без модуля Wi-Fi: https://archive.openwrt.org/backfire/10.03.1/ar71xx/openwrt-ar71xx-tl-wr1043nd-v1-squashfs-factory.bin
+И наконец начинаем процесс перепрошивания, System Tools -> Firmware Upgrade -> File (pick up) -> Upgrade.
+
+2.4. После загрузки:
+роутер запускается на OpenWrt: 
+SSH доступ: ssh root@192.168.1.1
+Web access: http://192.168.1.1/cgi-bin/luci/
+
+2.5. Первоначальная настройка пароля и сети.
+Подключаемся к роутеру в любой LAN-порт.
+Открываем в браузере: http://192.168.1.1
+Если видим веб интерфейс отличный от интерфейса TP-Link, значит прошились успешно.
+При первом входе:
+логин: root
+пароль: (пустой)
+OpenWRT сразу попросит задать новый пароль → задаём.
+
+Настраиваем интернет (WAN). Открываем меню Network -> Interfaces -> WAN -> Edit, выбираем способ подключения, в моём случае PPPoE.
+Protocol: PPPoE
+Username: логин от провайдера
+Password: пароль
+Save & Apply
+Можно проверить лин в Network -> Diagnostics -> Ping
+
+Настраиваем беспроводную сеть (Wi-Fi). Открываем меню Network -> Wireless. Строка: Generic MAC80211 802.11bgn (radio0) в состоянии Disabled. Нажимаем Edit, ESSID – имя сети, Mode: Access Point, Network: lan, Wireless security: Encruption -> WPA2-PSK, Key: пароль на wi-fi. Save. Enable. Save & Apply сверху страницы.
+
+Настраиваем DHCP-сервер. Network -> Interfaces -> LAN -> Edit. Вкладка DHCP Server.
+Start: 100 – начало диапазона адресов (192.168.1.100)
+Limit: 50 – конец диапазона адресов (192.168.1.149)
+Save & Apply
+
+Резервирование IP (Static Leases). Можно привязать постоянные IP к конкретным устройствам. Network -> DHCP and DNS -> Static Leases -> Add:
+
+Hostname: любое имя устройства (например, laptop, server, tv)
+MAC Address: физический адрес устройства (можно скопировать из списка DHCP Leases выше)
+IP Address: желаемый IP, например 192.168.1.10
+Lease time: если оставить пустым – бессрочно
+Save & Apply
+Изменить LAN-адрес и подсеть можно Network -> Interfaces -> LAN -> Edit -> IPv4 address
+Save & Apply.
+Те же настройки можно прописать через SSH. Основные конфиг файлы:
+/etc/config/network
+/etc/config/dhcp
+/etc/config/wireless
+
+Используя консоль (пр. git bash, ps) ssh root@192.168.1.1 (Можно добавить свой  ключ для безпарольного доступа (~/.ssh))
+Для настройки WI-FI vi /etc/config/wireless
+
+config wifi-device 'radio0'
+        option type 'mac80211'
+        option path 'platform/ahb/180c0000.wmac'
+        option channel '1'
+        option band '2g'
+        option htmode 'HT20'
+        option disabled '0' # <-!!!
+
+config wifi-iface 'default_radio0'
+        option device 'radio0'
+        option network 'lan'
+        option mode 'ap'
+        option ssid 'Wireless Network Name'
+        option encryption 'psk2'
+        option key 'wireless Password'
+
+Настраиваем локальную сеть (LAN) vi /etc/config/network
+
+config interface 'lan'
+	option type 'bridge'
+	option ifname 'eth0.1'
+	option proto 'static'
+	option ipaddr '192.168.0.2'  # LAN-адрес роутера
+	option netmask '255.255.255.0'
+	option ip6assign '60'
+сохранить и выйти (:wq)
+
+vi /etc/config/dhcp изменить или добавить DHCP-пул для LAN
+
+config dhcp 'lan'
+	option interface 'lan'
+	option start '100'
+	option limit '50'
+	option leasetime '12h'
+	option force '1'
+равно 192.168.0.100 – 192.168.0.149
+
+Примеры статических резерваций:
+
+config host
+	option name 'desktop'
+	option mac 'AA:BB:CC:DD:EE:01'
+	option ip '192.168.0.10'
+
+config host
+	option name 'rpi'
+	option mac 'AA:BB:CC:DD:EE:02'
+	option ip '192.168.0.11'
+
+Можно включить локальный DNS через dnsmasq, там же в /etc/config/dhcp должны быть включены опции:
+
+option dhcpv4 'server'
+	option ra 'server'
+	option domain 'lan' – если отсутствует, добавляем.
+	option dynamicdhcp '1' – если отсутствует, добавляем
+Теперь можно пинговать хосты по option name, пр: ping desktop.lan.
+
+Пример конфига dnsmasq:
+
+config dnsmasq
+	option domainneeded '1'
+	option localise_queries '1'
+	option rebind_protection '1'
+	option rebind_localhost '1'
+	option local '/homelab.com/' – разрешает имена внутри этой зоны
+	option domain 'homelab.com' – устанавливает локальный домен (теперь можно использовать homelab.com)
+	option expandhosts '1' – берет hostname из DHCP-резервации и добавляет к локальному домену
+	option authoritative '1'
+	option readethers '1'
+	option leasefile '/tmp/dhcp.leases'
+	option resolvfile '/tmp/resolv.conf.d/resolv.conf.auto'
+	option localservice '1'
+	option ednspacket_max '1232'
+#        option logqueries '1' – включает логирование по DNS
+
+Пример настройки WAN ():
+
+config interface 'wan'
+        option device 'eth0.2'
+        option proto 'pppoe'
+        option username 'isp login'
+        option password 'isp password'
+        option ipv6 'auto'
+
+Для применения настроек выполняем: /etc/init.d/dnsmasq restart (это перезапустит DHCP без потери SSH), потом: /etc/init.d/network reload
+
+Проверка:
+ip addr show br-lan (проверка IP роутера)
+cat /tmp/dhcp.leases (проверка активные leases)
+ps | grep dnsmasq (проверка, что dnsmasq работает)
+
+Итог:
+После прошивки устройство фактически становится компактным Linux-хостом с BusyBox, opkg, UCI и доступом к системным службам, и с расширенными возможностями:
+•	Поддержка VLAN и тонкая настройка интерфейсов — можно разделять сеть на сегменты без дополнительного оборудования.
+•	Гибкая настройка WAN/LAN: статические IP, PPPoE, DHCP, failover, multi-WAN, WAN as LAN (See bonus section).
+•	Firewall и NAT полностью настраиваются через iptables/nftables, плюс QoS.
+•	IPv6: полноценная поддержка с настройкой DHCPv6, SLAAC, туннелей.
+•	Все радиомодули и SSID под полным контролем: настройка мощности, каналов, стандартов (a/b/g/n/ac), HT/VHT.
+•	Мониторинг подключенных клиентов: можно смотреть MAC, RSSI, bitrate, inactive time.
+•	Разделение SSID на гостевые сети, с разными VLAN или firewall-правилами.
+•	Установка дополнительных пакетов через opkg.
+•	Например:
+o	Prometheus Node Exporter для мониторинга.
+o	VPN-сервисы: OpenVPN, WireGuard.
+o	Adblock / Pi-hole подобные сервисы.
+o	Samba, NFS, FTP для файлового сервера.
+•	SSH/console доступ с полноценными BusyBox утилитами.
+•	Cron / scheduled tasks для автоматизации.
+•	Скрипты Lua или shell для кастомного мониторинга и метрик (как мы делали с Wi-Fi метриками).
+•	Сохранение конфигурации через UCI и возможность резервного восстановления.
+•	Появляется возможность полного сбора данных: загрузка CPU, память, сеть, клиенты Wi-Fi, температура (если есть датчики).
+•	Подключение к Prometheus через Node Exporter или свои скрипты.
+•	События и логирование через syslog, можно интегрировать с внешними системами.
+•	Доступные моды беспроводного интерфейса: Access Point, Client, Ad-Hoc, 802.11s, Pseudo Ad-Hoc (ahdemo), Monitor, Access Point (WDS), Client (WDS).
+
+3. Система мониторинга на OpenWrt
+
+3.1. Установка Prometheus Node Exporter (Lua)
+
+Пакет:
+opkg update
+opkg install prometheus-node-exporter-lua
+opkg install prometheus-node-exporter-lua-openwrt
+opkg install prometheus-node-exporter-lua-wifi
+opkg install prometheus-node-exporter-lua-wifi_stations
+После установки в /usr/lib/lua/prometheus-collectors/ лежат стандартные collectors. wifi_stations.lua модифицируем (п.4.1.)
+
+4. Кастомные Lua-коллекторы Wi-Fi
+
+Оба скрипта используют:
+•	ubus — для получения структур network.wireless
+•	iwinfo — для уровня сигнала, шумов, клиентов, bitrate
+•	формат метрик полностью совместим с Prometheus
+
+4.1. wifi.lua — параметры интерфейса
+
+•	(файл в /usr/lib/lua/prometheus-collectors/wifi.lua)
+•	качество сигнала
+•	bitrate
+•	шум
+•	уровень сигнала
+•	ssid, bssid, mode, channel, frequency
+
+Полный код:
+    local ubus = require "ubus"
+    local iwinfo = require "iwinfo"
+
+local function scrape()
+    local metric_wifi_network_quality = metric("wifi_network_quality", "gauge")
+    local metric_wifi_network_bitrate = metric("wifi_network_bitrate", "gauge")
+    local metric_wifi_network_noise = metric("wifi_network_noise_dbm", "gauge")
+    local metric_wifi_network_signal = metric("wifi_network_signal_dbm", "gauge")
+
+    local u = ubus.connect()
+    local status = u:call("network.wireless", "status", {})
+
+    for dev, dev_table in pairs(status) do
+        for _, intf in ipairs(dev_table['interfaces']) do
+            local ifname = intf['ifname']
+            if ifname ~= nil then
+                local iw = iwinfo[iwinfo.type(ifname)]
+                local labels = {
+                    channel = iw.channel(ifname),
+                    ssid = iw.ssid(ifname),
+                    bssid = string.lower(iw.bssid(ifname)),
+                    mode = iw.mode(ifname),
+                    ifname = ifname,
+                    country = iw.country(ifname),
+                    frequency = iw.frequency(ifname),
+                    device = dev,
+                }
+
+                local qc = iw.quality(ifname) or 0
+                local qm = iw.quality_max(ifname) or 0
+                local quality = 0
+                if qc > 0 and qm > 0 then
+                    quality = math.floor((100 / qm) * qc)
+                end
+
+                metric_wifi_network_quality(labels, quality)
+                metric_wifi_network_noise(labels, iw.noise(ifname) or 0)
+                metric_wifi_network_bitrate(labels, iw.bitrate(ifname) or 0)
+                metric_wifi_network_signal(labels, iw.signal(ifname) or -255)
+            end
+        end
+    end
+end
+
+return { scrape = scrape }
+
+4.2. wifi_stations.lua — параметры клиентов
+
+(файл в /usr/lib/lua/prometheus-collectors/wifi_stations.lua)
+•	RSSI
+•	inactive (ms)
+•	expected throughput
+•	tx/rx bitrate
+•	tx/rx pkts, bytes
+•	количество клиентов → новое → wifi_stations{name="wlan0"}
+
+Полный код:
+ local ubus = require "ubus"
+ local iwinfo = require "iwinfo"
+
+local function safe_label(val)
+  if not val then return "" end
+  val = tostring(val)
+  val = val:gsub("\\", "\\\\")
+  val = val:gsub("\"", "\\\"")
+  return val
+end
+
+local function scrape()
+  local metric_wifi_stations = metric("wifi_stations", "gauge")
+  local metric_wifi_station_signal = metric("wifi_station_signal_dbm","gauge")
+  local metric_wifi_station_inactive = metric('wifi_station_inactive_milliseconds', 'gauge')
+  local metric_wifi_station_exp_thr = metric('wifi_station_expected_throughput_kilobits_per_second', 'gauge')
+  local metric_wifi_station_tx_bitrate = metric('wifi_station_transmit_kilobits_per_second', 'gauge')
+  local metric_wifi_station_rx_bitrate = metric('wifi_station_receive_kilobits_per_second', 'gauge')
+  local metric_wifi_station_tx_packets = metric("wifi_station_transmit_packets_total","counter")
+  local metric_wifi_station_rx_packets = metric("wifi_station_receive_packets_total","counter")
+  local metric_wifi_station_tx_bytes = metric('wifi_station_transmit_bytes_total', 'counter')
+  local metric_wifi_station_rx_bytes = metric('wifi_station_receive_bytes_total', 'counter')
+
+  local u = ubus.connect()
+  local status = u:call("network.wireless", "status", {})
+  for dev, dev_table in pairs(status) do
+    for _, intf in ipairs(dev_table['interfaces']) do
+      local ifname = intf['ifname']
+      if ifname then
+        local iw = iwinfo[iwinfo.type(ifname)]
+        local assoclist = iw.assoclist(ifname)
+        local count = 0
+
+        for mac, station in pairs(assoclist) do
+          local labels = {
+            ifname = safe_label(ifname),
+            mac    = safe_label(mac)
+          }
+
+          if station.signal and station.signal ~= 0 then
+            metric_wifi_station_signal(labels, station.signal)
+          end
+          if station.inactive then
+            metric_wifi_station_inactive(labels, station.inactive)
+          end
+          if station.expected_throughput and station.expected_throughput ~= 0 then
+            metric_wifi_station_exp_thr(labels, station.expected_throughput)
+          end
+          if station.tx_rate and station.tx_rate ~= 0 then
+            metric_wifi_station_tx_bitrate(labels, station.tx_rate)
+          end
+          if station.rx_rate and station.rx_rate ~= 0 then
+            metric_wifi_station_rx_bitrate(labels, station.rx_rate)
+          end
+          metric_wifi_station_tx_packets(labels, station.tx_packets)
+          metric_wifi_station_rx_packets(labels, station.rx_packets)
+          if station.tx_bytes then
+            metric_wifi_station_tx_bytes(labels, station.tx_bytes)
+          end
+          if station.rx_bytes then
+            metric_wifi_station_rx_bytes(labels, station.rx_bytes)
+          end
+
+          count = count + 1
+        end
+        metric_wifi_stations({ifname = safe_label(ifname)}, count)
+      end
+    end
+  end
+end
+
+return { scrape = scrape }
+
+4.3. prometheus-node-exporter-lua — параметры порта и интерфейса прослушивания
+(файл  /etc/config/prometheus-node-exporter-lua)
+
+config prometheus-node-exporter-lua 'main'
+    option listen_interface 'lan'      # вместо 'loopback'
+    option listen_port '9100'
+
+Либо с командной строки выполняем следующее: 
+    uci set prometheus-node-exporter-lua.main.listen_interface='lan'
+    uci set prometheus-node-exporter-lua.main.listen_port='9100'
+    uci commit prometheus-node-exporter-lua
+    /etc/init.d/prometheus-node-exporter-lua restart
+
+
+
+
+
+4.4. Пример настройки firewall
+
+    uci add firewall rule
+    uci set firewall.@rule[-1].name='Prometheus Node Exporter'
+    uci set firewall.@rule[-1].src='lan'
+    uci set firewall.@rule[-1].dest_port='9100'
+    uci set firewall.@rule[-1].proto='tcp udp'
+    uci set firewall.@rule[-1].target='ACCEPT'
+    uci commit firewall
+    /etc/init.d/firewall restart
+
+5. Проверка работы метрик
+
+Проверка:
+    curl http://192.168.0.2:9100/metrics
+Убеждалемся, что присутствуют:
+wifi_network_quality{...}
+wifi_station_signal_dbm{mac="..."}
+wifi_stations{ifname="wlan0"} 3
+
+6. Настройка Prometheus
+job:
+scrape_configs:
+  - job_name: 'openwrt'
+    static_configs:
+      - targets: ['192.168.0.2:9100']
+
+7. Grafana Dashboard
+Ключевой график: количество клиентов (http://192.168.0.2:9100/metrics)
+
+PromQL:
+wifi_stations
+Сигнал клиентов
+wifi_station_signal_dbm
+Сигнал по конкретному MAC
+wifi_station_signal_dbm{mac="aa:bb:cc:dd:ee:ff"}
+Уровень шума
+wifi_station_noise_dbm 
+Трафик TX/RX пакеты по MAC
+rate(wifi_station_transmit_packets_total[5m])
+rate(wifi_station_receive_packets_total[5m])
+Скорость PHY (expected throughput)
+wifi_station_expected_throughput_kilobits_per_second
+Inactive клиентов (ms)
+wifi_station_inactive_milliseconds
+Bitrate (tx/rx)
+wifi_station_transmit_kilobits_per_second
+wifi_station_receive_kilobits_per_second
+Количество абонентов
+количество всех подключённых клиентов:
+count(wifi_station_signal_dbm)
+
+количество клиентов по интерфейсу:
+count by (iface)(wifi_station_signal_dbm)
+
+список MAC-адресов сейчас онлайн:
+label_join(wifi_station_signal_dbm, "mac", "", "mac")
+Пример панели
+•	Столбцы:
+o	MAC
+o	RSSI
+o	inactive
+o	expected throughput
+o	tx/rx bitrate
+o	tx/rx packets
+•	Repeat by ifname (если несколько SSID)
+
+8. Alertmanager — готовые правила
+
+8.1. Клиент отвалился
+groups:
+- name: wifi-alerts
+  rules:
+  - alert: WifiClientInactive
+    expr: wifi_station_inactive_milliseconds > 30000
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Client inactive > 30s"
+      description: "MAC: {{ $labels.mac }} on {{ $labels.ifname }}"
+
+8.2. Низкий сигнал
+  - alert: WifiLowSignal
+    expr: wifi_station_signal_dbm < -80
+    for: 2m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Low WiFi signal"
+      description: "MAC: {{ $labels.mac }} RSSI {{ $value }}"
+
+8.3. Много клиентов (перегруз)
+  - alert: WifiTooManyClients
+    expr: wifi_stations > 12
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Too many WiFi clients"
+      description: "Interface {{ $labels.ifname }} has {{ $value }} clients"
+
+9. Результат
+
+В итоге старый TP-Link WR1043ND v1 превращён в:
+•	лёгкий Linux-хост на OpenWrt 22.03.5
+•	с кастомным Wi-Fi мониторингом уровня профессиональных контроллеров
+•	дающим:
+o	состояние интерфейса
+o	статистику клиентов
+o	throughput
+o	качество сигнала
+o	скорость передачи
+o	количество абонентов
+•	и интеграцией в:
+o	Prometheus
+o	Grafana
+o	Alertmanager
+Получилась полноценная система наблюдения за Wi-Fi состоянием, сравнимая с UniFi или MikroTik CAPsMAN, но на бюджетном роутере.
+
+
+
+
+10. Бонус
+____
+Use the WAN-Port as a LAN-Port
+remove to following lines, to remove the wan specific configuration (vlan and interface)
+V1.x /etc/config/network
+config interface 'wan'
+	option ifname 'eth0.2'
+	option proto 'dhcp'
+and
+config switch_vlan
+	option device 'switch0'
+	option vlan '2'
+	option ports '0 5t'
+and add the port 0 to the existing Vlan
+config switch_vlan
+	option device 'switch0'
+	option vlan '1'
+# add port 0 to the line below
+	option ports '0 1 2 3 4 5t'
+
+11. Откат
+
+Для возврата к заводской прошивке с OpenWrt требуется бинарник с урезанным boot, это файлы…stripped.bin. Можно и самому произвести такую процедуру: 
+dd if=wr1043nv1.bin of=fw.bin  skip=257 bs=512 , где wr1043nv1.bin есть оригинальный файл прошивки. 
+https://4pda.to/forum/dl/post/8068068/TL-WR1043ND-V1-stripped.zip 
+
+Перед началом процедуры необходимо сбросить роутер до заводских настроек. Через веб интерфейс это:
+System -> Backup/Flash Firmware -> Reset to defaults (красная кнопка Perform reset).
+Либо через CLI (легко можно превратить роутер в кирпич):
+
+ssh root@192.168.0.2
+firstboot -y && reboot
+exit
+dd if=wr1043nv1.bin of=fw.bin skip=257 bs=512
+scp fw.bin root@192.168.1.1:/tmp/.
+В случае ошибки ash: /usr/libexec/sftp-server: not found используем ключ –O (большое о).
+scp –O fw.bin root@192.168.1.1:/tmp/.
+ssh root@192.168.1.1 (this is the default address after reset)
+cd /tmp
+mtd -r write fw.bin firmware
+
+Если все таки окирпичили – находим на плате роутера RX, TX, GND, VCC и подключаемся через UART USB адаптер (bitrate 115200) используя Putty, включаем роутер и начинаем писать tpl tpl tpl. Сетку настраиваем 192.168.0.5/24 gw 192.168.0.1, запускаем TFTPd и вещаем бинарники. Команды вводим в терминле:
+erase 0xbf020000 +7c0000
+tftpboot 0x81000000 .bin
+cp.b 0x81000000 0xbf020000 0x7c0000
+bootm 0xbf020000
+https://dcbeelinekz.1bb.ru/viewtopic.php?id=124
+
+12. Полезные команды для openwrt:
+uci set wireless.@wifi-iface[0].mode='client' 
+uci commit wireless 
+wifi reload.
+
+uci show wireless
+uci set wireless.radioN.disabled='0'
+uci set wireless.radioN.country='XX'
+uci commit wireless
+wifi reload
+
+iwinfo
+iwinfo wlan0 assoclist
+iw dev wlan0 station dump
+wifi up
+ua -e 'local iw=require("iwinfo"); for k,v in pairs(iw.nl80211) do print(k,v) end'
+iwinfo wlan0 scan
+ubus call network.wireless status
+
+logread -e lua
+logread -e Prometheus
+/etc/init.d/prometheus-node-exporter-lua restart
+netstat -lnp | grep 9100
+curl http://192.168.0.2:9100/metrics | grep wifi
+Прошивка (back to TP-Link)
+firstboot -y && reboot
+dd if=wr1043nv1.bin of=wr1043nv1out.bin  skip=257 bs=512
+scp fw.bin root@192.168.1.1:/tmp/.
+mtd -r write fw.bin firmware
+
+Полезные ссылки
+https://openwrt.org/toh/tp-link/tl-wr1043nd
+https://archive.openwrt.org/backfire/10.03.1/ar71xx/
+https://mirror-03.infra.openwrt.org/releases/22.03.5/targets/ath79/generic/
+https://4pda.to/forum/index.php?showtopic=558575&st=920
+https://openwrt.org/ru/toh/tp-link/tl-wr1043nd#back_to_original_firmware
+https://dd-wrt.com/support/router-database/
+LuCI-плагины и инструменты
+opkg install luci-app-statistics collectd-mod-interface collectd-mod-cpu collectd-mod-memory
+Это даст возможность мониторить трафик, CPU, память и т. д. прямо в веб-интерфейсе.
+
+
+
+
+Основные метрики Wi-Fi интерфейса (wifi_network_*)
+| Метрика                   | Что показывает                     | Как использовать                                                      |
+| ------------------------- | ---------------------------------- | --------------------------------------------------------------------- |
+| `wifi_network_quality`    | Качество сигнала (0–100%)          | График качества сигнала AP. Можно ставить порог <50% — сигнал слабый. |
+| `wifi_network_signal_dbm` | RSSI сигнал в dBm                  | Сильный сигнал около -50…-60 dBm. -80 и ниже — слабый сигнал.         |
+| `wifi_network_noise_dbm`  | Уровень шума в dBm                 | Низкий шум лучше (< -90 dBm). Высокий шум ухудшает качество.          |
+| `wifi_network_bitrate`    | Текущая скорость передачи (kbit/s) | Смотрим пропускную способность AP, падает при перегрузке.             |
+
+Метрики клиентов (wifi_station_*)
+| Метрика                                                | Что показывает                         | Как использовать                                            |
+| ------------------------------------------------------ | -------------------------------------- | ----------------------------------------------------------- |
+| `wifi_station_signal_dbm`                              | RSSI клиента в dBm                     | Смотрим качество сигнала для каждого клиента.               |
+| `wifi_station_inactive_milliseconds`                   | Время без активности                   | Если растёт — клиент неактивен или связь теряется.          |
+| `wifi_station_expected_throughput_kilobits_per_second` | Ожидаемая скорость передачи            | Можно сравнивать с фактической `transmit/receive` скорости. |
+| `wifi_station_transmit_kilobits_per_second`            | Скорость передачи AP→клиент            | Мониторим загрузку Wi-Fi.                                   |
+| `wifi_station_receive_kilobits_per_second`             | Скорость передачи клиент→AP            | То же самое, но в обратную сторону.                         |
+| `wifi_station_transmit/receive_packets_total`          | Количество пакетов                     | Для анализа нагрузки и проблем с потерей пакетов.           |
+| `wifi_stations`                                        | Общее количество подключённых клиентов | Можно ставить алерт, если вдруг AP “теряет” клиентов.       |
+
+
+
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+

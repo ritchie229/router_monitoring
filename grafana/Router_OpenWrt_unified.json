@@ -1,0 +1,301 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": "-- Grafana --",
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "gnetId": null,
+  "graphTooltip": 1,
+  "id": null,
+  "iteration": 1627612866323,
+  "links": [],
+  "panels": [
+    {
+      "type": "stat",
+      "title": "WAN — Download (Mbps)",
+      "id": 1,
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+      "datasource": "Prometheus",
+      "options": {
+        "reduceOptions": { "calcs": ["last"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "value"
+      },
+      "targets": [
+        {
+          "expr": "((rate(node_network_receive_bytes_total{device=\"pppoe-wan\"}[1m])) * 8) / 1000000",
+          "interval": "",
+          "legendFormat": "download_mbps",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "mbps",
+          "decimals": 2
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "WAN — Upload (Mbps)",
+      "id": 2,
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
+      "datasource": "Prometheus",
+      "options": {
+        "reduceOptions": { "calcs": ["last"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "value"
+      },
+      "targets": [
+        {
+          "expr": "((rate(node_network_transmit_bytes_total{device=\"pppoe-wan\"}[1m])) * 8) / 1000000",
+          "interval": "",
+          "legendFormat": "upload_mbps",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "mbps",
+          "decimals": 2
+        }
+      }
+    },
+
+    {
+      "type": "stat",
+      "title": "Wi-Fi — Total Connected Clients",
+      "id": 3,
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 6 },
+      "datasource": "Prometheus",
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value"
+      },
+      "targets": [
+        {
+          "expr": "sum(wifi_stations)",
+          "legendFormat": "clients_total",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0
+        }
+      }
+    },
+
+    {
+      "type": "timeseries",
+      "title": "Wi-Fi — Clients per iface",
+      "id": 4,
+      "gridPos": { "h": 7, "w": 8, "x": 4, "y": 6 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum by (ifname) (wifi_stations)",
+          "legendFormat": "{{ifname}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "none", "min": 0 }
+      }
+    },
+
+    {
+      "type": "timeseries",
+      "title": "Wi-Fi — Network signal (dBm)",
+      "id": 5,
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 11 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "wifi_network_signal_dbm",
+          "legendFormat": "{{ifname}}/{{ssid}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "dBm" }
+      }
+    },
+
+    {
+      "type": "table",
+      "title": "Wi-Fi — Stations details (signal / inactive / rates)",
+      "id": 6,
+      "gridPos": { "h": 9, "w": 12, "x": 8, "y": 11 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "label_join( \n  topk(100, wifi_station_signal_dbm), \"mac_if\", \"\", \"mac\", \"ifname\" \n)",
+          "refId": "A"
+        },
+        {
+          "expr": "wifi_station_signal_dbm",
+          "legendFormat": "signal",
+          "refId": "B"
+        },
+        {
+          "expr": "wifi_station_inactive_milliseconds",
+          "legendFormat": "inactive_ms",
+          "refId": "C"
+        },
+        {
+          "expr": "wifi_station_transmit_kilobits_per_second",
+          "legendFormat": "tx_kbps",
+          "refId": "D"
+        },
+        {
+          "expr": "wifi_station_receive_kilobits_per_second",
+          "legendFormat": "rx_kbps",
+          "refId": "E"
+        }
+      ],
+      "options": {
+        "showHeader": true
+      }
+    },
+
+    {
+      "type": "timeseries",
+      "title": "Wi-Fi — Expected throughput (per station)",
+      "id": 7,
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 20 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "wifi_station_expected_throughput_kilobits_per_second",
+          "legendFormat": "{{mac}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "kbps" }
+      }
+    },
+
+    {
+      "type": "timeseries",
+      "title": "System — CPU usage (seconds per mode)",
+      "id": 8,
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 0 },
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "rate(node_cpu_seconds_total{mode!=\"idle\"}[1m])", "legendFormat": "{{mode}}", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "none" }
+      }
+    },
+
+    {
+      "type": "gauge",
+      "title": "System — Memory used %",
+      "id": 9,
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 0 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "100 * (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 1
+        }
+      }
+    },
+
+    {
+      "type": "timeseries",
+      "title": "System — Network top devices (tx/rx bytes rate)",
+      "id": 10,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "topk(8, rate(node_network_transmit_bytes_total[1m]))",
+          "legendFormat": "tx {{device}}",
+          "refId": "A"
+        },
+        {
+          "expr": "topk(8, rate(node_network_receive_bytes_total[1m]))",
+          "legendFormat": "rx {{device}}",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "Bps" }
+      }
+    },
+
+    {
+      "type": "stat",
+      "title": "Wi-Fi — Stations Count (wlan0)",
+      "id": 11,
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 26 },
+      "datasource": "Prometheus",
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      },
+      "targets": [
+        { "expr": "wifi_stations{ifname=\"wlan0\"}", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none", "decimals": 0 } }
+    },
+
+    {
+      "type": "timeseries",
+      "title": "Wi-Fi — Signal histogram (per station)",
+      "id": 12,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 26 },
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "histogram_quantile(0.5, sum by (le) (rate(wifi_station_signal_dbm[5m])))", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "dBm" } }
+    },
+
+    {
+      "type": "text",
+      "title": "Legend / Tips",
+      "id": 50,
+      "gridPos": { "h": 3, "w": 24, "x": 0, "y": 34 },
+      "options": {
+        "content": "Datasource: Prometheus\nWAN iface: **pppoe-wan**\nWi-Fi iface: **wlan0**\n\nUseful queries:\n- Clients total: `sum(wifi_stations)`\n- Station signal: `wifi_station_signal_dbm{mac=\"...\"}`\n- WAN Download (Mbps): `((rate(node_network_receive_bytes_total{device=\"pppoe-wan\"}[1m]))*8)/1000000`\n\nIf you need panels adjusted (different iface, different time windows) — tell me and I will modify.",
+        "mode": "markdown"
+      }
+    }
+
+  ],
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["openwrt","wifi","router","node-exporter"],
+  "templating": {
+    "list": []
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": { "refresh_intervals": ["5s","10s","30s","1m","5m","15m","1h"], "time_options": ["5m","15m","1h","6h","12h","24h","7d"] },
+  "title": "Router — OpenWrt (WiFi & System) unified",
+  "uid": null,
+  "version": 1
+}
+

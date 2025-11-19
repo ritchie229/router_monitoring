@@ -1,0 +1,222 @@
+groups:
+
+
+  #  - name: test-alert-group
+  #    rules:
+  #      - alert: TestTelegramAlert
+  #        expr: vector(1)
+  #        for: 1s
+  #        labels:
+  #          severity: critical
+  #        annotations:
+  #          summary: "Test alert to Telegram"
+  #          description: "This is a test alert fired intentionally."
+
+  - name: wifi_alerts
+    rules:
+
+      - alert: LowWiFiSignal
+        expr: wifi_station_signal_dbm < -80
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          description: "Peer {{ $labels.mac }} has too low radio signal of ({{ $value }} dBm)."
+          summary: "Low WiFi Signal"
+
+      - alert: WiFiClientDisconnect
+        expr: wifi_stations == 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          description: "All peers dropped from int {{ $labels.ifname }}"
+          summary: "Клиенты отвалились"
+
+      - alert: WifiTooManyClients
+        expr: wifi_stations > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Too many WiFi clients"
+          description: "Interface {{ $labels.ifname }} has {{ $value }} clients"
+
+
+  - name: home-network-alerts
+    rules:
+
+    # ---------------------------------------------------------
+    # 1. Wi-Fi Alerts
+    # ---------------------------------------------------------
+
+    - alert: WiFi_Client_Low_Signal
+      expr: wifi_station_signal_dbm < -80
+      for: 2m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Низкий Wi-Fi сигнал"
+        description: |
+          Клиент {{ $labels.mac }} на {{ $labels.ifname }} имеет низкий сигнал: {{ $value }} dBm.
+          SSID: {{ $labels.ssid }}
+
+    - alert: WiFi_Client_Inactive
+      expr: wifi_station_inactive_milliseconds > 30000
+      for: 1m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Wi-Fi клиент неактивен"
+        description: |
+          Клиент {{ $labels.mac }} неактивен {{ $value }} мс.
+          Возможен обрыв соединения.
+
+    - alert: WiFi_Low_Expected_Throughput
+      expr: wifi_station_expected_throughput_kilobits < 3000
+      for: 2m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Низкая ожидаемая скорость Wi-Fi"
+        description: |
+          Клиент {{ $labels.mac }} имеет низкую ожидаемую скорость: {{ $value }} Kbps.
+
+    - alert: WiFi_Too_Many_Clients
+      expr: sum(wifi_stations) > 15
+      for: 3m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Слишком много Wi-Fi клиентов"
+        description: |
+          Общее число клиентов увеличилось: {{ $value }}.
+          Возможна перегрузка Wi-Fi.
+
+    # ---------------------------------------------------------
+    # 2. WAN / интернет
+    # ---------------------------------------------------------
+
+    - alert: WAN_Down
+      expr: probe_success == 0
+      for: 1m
+      labels:
+        severity: critical
+      annotations:
+        summary: "WAN: интернет не доступен"
+        description: |
+          Проверка до 8.8.8.8 не проходит.
+          Интернет недоступен.
+
+    - alert: WAN_Low_Download_Speed
+      expr: rate(node_network_receive_bytes_total{device="pppoe-wan"}[1m]) < 200000
+      for: 3m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Низкая скорость загрузки"
+        description: |
+          Download по pppoe-wan слишком низкий: {{ $value }} bytes/sec.
+
+    - alert: WAN_Low_Upload_Speed
+      expr: rate(node_network_transmit_bytes_total{device="pppoe-wan"}[1m]) < 100000
+      for: 3m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Низкая скорость отдачи"
+        description: |
+          Upload по pppoe-wan слишком низкий: {{ $value }} bytes/sec.
+
+    # ---------------------------------------------------------
+    # 3. Системные метрики
+    # ---------------------------------------------------------
+
+    - alert: High_CPU_Usage
+      expr: avg(rate(node_cpu_seconds_total{mode!="idle"}[2m])) * 100 > 90
+      for: 1m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Высокая загрузка CPU"
+        description: |
+          CPU загружен более 90% в течение 1 мин.
+
+    - alert: Low_Free_RAM
+      expr: (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 < 15
+      for: 2m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Мало свободной RAM"
+        description: |
+          Доступно менее 15% оперативной памяти.
+
+    - alert: RootFS_Almost_Full
+      expr: (node_filesystem_avail_bytes{mountpoint="/overlay"} / node_filesystem_size_bytes{mountpoint="/overlay"}) * 100 < 10
+      for: 3m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Почти заполнен /overlay"
+        description: |
+          Осталось менее 10% свободного места в overlay.
+          OpenWrt может перестать работать!
+
+    # ---------------------------------------------------------
+    # 4. Exporter/Monitoring alerts
+    # ---------------------------------------------------------
+
+    - alert: Target_Exporter_Down
+      expr: up == 0
+      for: 2m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Экспортер недоступен"
+        description: |
+          Экспортер {{ $labels.job }} / {{ $labels.instance }} недоступен.
+
+    - alert: Wifi_Exporter_No_Data
+      expr: absent(wifi_station_signal_dbm)
+      for: 2m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Wi-Fi exporter не дает данных"
+        description: |
+          Нет данных Wi-Fi метрик. Экспортер упал или роутер недоступен.
+
+    - alert: Node_Exporter_No_Data
+      expr: absent(node_cpu_seconds_total)
+      for: 2m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Node exporter не дает данных"
+        description: |
+          Node exporter недоступен или роутер выключен.
+
+    # ---------------------------------------------------------
+    # 5. Security / редкие
+    # ---------------------------------------------------------
+
+    - alert: WiFi_New_Device_Connected
+      expr: changes(wifi_station_signal_dbm[1m]) > 0
+      for: 0m
+      labels:
+        severity: info
+      annotations:
+        summary: "Подключилось новое устройство"
+        description: |
+          Новое Wi-Fi устройство на {{ $labels.ifname }} / SSID {{ $labels.ssid }}.
+
+    - alert: WiFi_Auth_Failures
+      expr: increase(wifi_station_auth_failures_total[5m]) > 5
+      labels:
+        severity: warning
+      annotations:
+        summary: "Много ошибок авторизации Wi-Fi"
+        description: |
+          За 5 минут произошло более 5 auth failures.
+
