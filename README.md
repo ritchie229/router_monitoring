@@ -557,7 +557,8 @@ To return to factory firmware from OpenWrt requires a binary with trimmed boot, 
 dd if=wr1043nv1.bin of=fw.bin skip=257 bs=512
 ```
 , where wr1043nv1.bin is the original firmware file.
-https://4pda.to/forum/dl/post/8068068/TL-WR1043ND-V1-stripped.zip
+
+- https://4pda.to/forum/dl/post/8068068/TL-WR1043ND-V1-stripped.zip
 
 Before starting the procedure, reset the router to factory settings. Through web interface this is:
 System -> Backup/Flash Firmware -> Reset to defaults (red button Perform reset).
@@ -616,13 +617,14 @@ dd if=wr1043nv1.bin of=wr1043nv1out.bin skip=257 bs=512
 scp fw.bin root@192.168.1.1:/tmp/.
 mtd -r write fw.bin firmware
 ```
-Useful Links
-https://openwrt.org/toh/tp-link/tl-wr1043nd
-https://archive.openwrt.org/backfire/10.03.1/ar71xx/
-https://mirror-03.infra.openwrt.org/releases/22.03.5/targets/ath79/generic/
-https://4pda.to/forum/index.php?showtopic=558575&st=920
-https://openwrt.org/ru/toh/tp-link/tl-wr1043nd#back_to_original_firmware
-https://dd-wrt.com/support/router-database/
+Useful Links:
+
+- https://openwrt.org/toh/tp-link/tl-wr1043nd
+- https://archive.openwrt.org/backfire/10.03.1/ar71xx/
+- https://mirror-03.infra.openwrt.org/releases/22.03.5/targets/ath79/generic/
+- https://4pda.to/forum/index.php?showtopic=558575&st=920
+- https://openwrt.org/ru/toh/tp-link/tl-wr1043nd#back_to_original_firmware
+- https://dd-wrt.com/support/router-database/
 
 LuCI Plugins and Tools
 ```bash
@@ -636,7 +638,7 @@ This will allow monitoring traffic, CPU, memory, etc. directly in the web interf
 Within this repo you can find all scripts, configs and ready monitoring tools related to this project. 
 
 The project structure:
-
+```bash
 grafana-deploy
 ├── alert.rules.yml
 ├── docker-compose.yml
@@ -675,7 +677,7 @@ grafana-deploy
             ├── collect_wifi.lua
             ├── wifi_stations_w.lua
             └── wifi_w.lua
- 
+```
 
 To launch a ready Grafana-Prometheus-Alertmanager set, this very repo can be used for testing or using widely.
 To do so and stop all deleting the secrets just run the scripts below:
